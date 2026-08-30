@@ -1002,6 +1002,21 @@ static bool whisper_model_load(struct whisper_model_loader * loader, whisper_con
 
         wctx.model.buf = new std::vector<uint8_t>();
         wctx.model.buf->resize(scale*MEM_REQ_MODEL.at(wctx.wtype).at(model.type));
+        // MEM_REQ_MODEL assumes the standard d_model for the model type
+        // (small=768, medium=1024, large=1280). Distilled students keep
+        // the teacher's width in a smaller slot — scale the budget by
+        // the squared width ratio or ggml_new_object aborts with
+        // "not enough space" (0.25% short on whisper-distill-ne).
+        {
+            const double standard = (model.type == e_model::MODEL_SMALL) ? 768.0
+                                  : (model.type == e_model::MODEL_MEDIUM) ? 1024.0
+                                  : 1280.0;
+            const double ratio = (double) hparams.n_audio_state / standard;
+            if (ratio > 1.0) {
+                const size_t grown = (size_t)((double) wctx.model.buf->size() * ratio * ratio * 1.10);
+                wctx.model.buf->resize(grown);
+            }
+        }
 
         // we skip initialization of the state until it is needed
         // because it might be that state will always be provided externally.
@@ -2960,9 +2975,9 @@ struct whisper_state * whisper_init_state(whisper_context * ctx) {
     if (ctx->params.use_gpu) {
         state->ctx_metal = ggml_metal_init(1);
         if (!state->ctx_metal) {
-            log("%s: ggml_metal_init() failed\n", __func__);
-            delete state;
-            return nullptr;
+            // FIX(metal-experiment): fall back to CPU instead of failing
+            // the whole init (the app crashes otherwise).
+            log("%s: ggml_metal_init() failed - falling back to CPU\n", __func__);
         }
     }
 

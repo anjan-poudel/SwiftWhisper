@@ -12,15 +12,22 @@ public class Whisper {
     internal var frameCount: Int? // For progress calculation (value not in `whisper_state` yet)
     internal var cancelCallback: (() -> Void)?
 
-    public init(fromFileURL fileURL: URL, withParams params: WhisperParams = .default) {
-        self.whisperContext = fileURL.relativePath.withCString { whisper_init_from_file_with_params($0, whisper_context_params()) }
+    public init(fromFileURL fileURL: URL, withParams params: WhisperParams = .default,
+                useGPU: Bool = true) {
+        self.whisperContext = fileURL.relativePath.withCString {
+            whisper_init_from_file_with_params($0, whisper_context_params(use_gpu: useGPU))
+        }
         self.params = params
     }
 
-    public init(fromData data: Data, withParams params: WhisperParams = .default) {
+    public init(fromData data: Data, withParams params: WhisperParams = .default,
+                useGPU: Bool = true) {
         var copy = data // Need to copy memory so we can gaurentee exclusive ownership over pointer
 
-        self.whisperContext = copy.withUnsafeMutableBytes { whisper_init_from_buffer_with_params($0.baseAddress!, data.count, whisper_context_params()) }
+        self.whisperContext = copy.withUnsafeMutableBytes {
+            whisper_init_from_buffer_with_params($0.baseAddress!, data.count,
+                                                 whisper_context_params(use_gpu: useGPU))
+        }
         self.params = params
     }
 
